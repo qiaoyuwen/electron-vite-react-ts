@@ -1,0 +1,16 @@
+.sider {
+  @apply h-full flex flex-col relative duration-300;
+  background-image: linear-gradient(180deg, #f9fbff 0%, #fbfcff 100%);
+}
+
+.sider .sider-drag-line:hover {
+  background-color: #6259ff;
+}
+
+.sider .sider-collapse-btn {
+  opacity: 0.5;
+}
+
+.sider .sider-collapse-btn:hover {
+  opacity: 1;
+}

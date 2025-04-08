@@ -1,3 +1,16 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:focus-visible {
+  outline: none;
+}
+
+body {
+  margin: 0;
+}
+
+.app {
+  width: 100vw;
+  height: 100vh;
+}

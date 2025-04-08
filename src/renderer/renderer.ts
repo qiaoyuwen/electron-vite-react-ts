@@ -25,5 +25,4 @@
  *  });
  * ```
  */
-console.log('renderer');
-import './main';
+import "./main";
