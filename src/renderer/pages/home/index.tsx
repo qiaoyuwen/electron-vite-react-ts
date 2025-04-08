@@ -10,14 +10,15 @@ import {
   theme,
   Upload,
 } from "antd";
-import { FC, useEffect, useState } from "react";
+import { FC, useEffect, useRef, useState } from "react";
 import { UploadOutlined } from "@ant-design/icons";
 import { RcFile } from "antd/es/upload";
 import * as XLSX from "xlsx";
 import { uid } from "@/utils/uid";
 import { useConfirm } from "@/hooks/confirm";
 import MoreIcon from "@/assets/more.png";
-import { unionBy } from "lodash";
+import { round, unionBy } from "lodash";
+import { DateUtils } from "@/utils/date";
 
 interface ExcelData {
   id: string;
@@ -29,6 +30,19 @@ interface ExcelData {
     data: Record<string, any>[];
   }[];
 }
+
+const EXCEL_EPOCH = new Date(1899, 11, 31);
+
+const excelSerialToDate = (serial: number) => {
+  const utcDays = Math.floor(serial - 1); // Excel 从 1 开始计数
+  const msPerDay = 86400000; // 一天的毫秒数
+  const date = new Date(EXCEL_EPOCH.getTime() + utcDays * msPerDay);
+
+  // 修正 Excel 的闰年错误（1900 年不是闰年，但 Excel 认为它是）
+  if (serial >= 60) date.setUTCDate(date.getUTCDate() - 1);
+
+  return date;
+};
 
 const HomePage: FC = () => {
   const { token } = theme.useToken();
@@ -45,6 +59,7 @@ const HomePage: FC = () => {
   const [selectedSheetId, setSelectedSheetId] = useState<string>();
   const [hoverId, setHoverId] = useState<string>();
   const [moreMenuOpenedId, setMoreMenuOpenedId] = useState<string>();
+  const uploadingRef = useRef(false);
 
   useEffect(() => {
     if (selectedExcelData) {
@@ -52,47 +67,64 @@ const HomePage: FC = () => {
     }
   }, [selectedExcelData]);
 
-  const resolveExcels = async (file: RcFile) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: "array" });
-        const excelData: ExcelData = {
-          id: uid(),
-          name: file.name,
-          sheets: [],
-        };
-        for (const sheetName of workbook.SheetNames) {
-          const sheet = workbook.Sheets[sheetName];
-          const jsonData: Record<string, any>[] =
-            XLSX.utils.sheet_to_json(sheet);
-          if (jsonData.length > 0) {
-            const firstRow = jsonData.shift();
-            excelData.sheets.push({
-              id: uid(),
-              name: Object.keys(firstRow)[0],
-              columns: Object.keys(firstRow).map((key) => {
-                return {
-                  key,
-                  label: firstRow[key] as string,
-                };
-              }),
-              data: jsonData,
-            });
+  const resolveFile = async (file: RcFile) => {
+    return new Promise<ExcelData>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target.result as ArrayBuffer);
+          const workbook = XLSX.read(data, { type: "array" });
+          const excelData: ExcelData = {
+            id: uid(),
+            name: file.name,
+            sheets: [],
+          };
+          for (const sheetName of workbook.SheetNames) {
+            const sheet = workbook.Sheets[sheetName];
+            const jsonData: Record<string, any>[] =
+              XLSX.utils.sheet_to_json(sheet);
+            if (jsonData.length > 0) {
+              const firstRow = jsonData.shift();
+              excelData.sheets.push({
+                id: uid(),
+                name: Object.keys(firstRow)[0],
+                columns: Object.keys(firstRow).map((key) => {
+                  return {
+                    key,
+                    label: firstRow[key] as string,
+                  };
+                }),
+                data: jsonData,
+              });
+            }
           }
+          resolve(excelData);
+        } catch {
+          message.error(
+            `Excel文件(${file.name})读取失败，请确认选择文件是否正确`
+          );
         }
-        const newExcelDataList = [...excelDataList, excelData];
-        setExcelDataList(newExcelDataList);
-        setSelectedExcelDataList([...selectedExcelDataList, excelData]);
-        setSelectedExcelData(excelData);
-      } catch {
-        message.error(
-          `Excel文件(${file.name})读取失败，请确认选择文件是否正确`
-        );
-      }
-    };
-    reader.readAsArrayBuffer(file);
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  };
+
+  const resolveExcels = async (_: RcFile, files: RcFile[]) => {
+    if (uploadingRef.current) {
+      return;
+    }
+    uploadingRef.current = true;
+    const result = await Promise.all(
+      files.map((item) => {
+        return resolveFile(item);
+      })
+    );
+
+    const newExcelDataList = [...excelDataList, ...result];
+    setExcelDataList(newExcelDataList);
+    setSelectedExcelDataList([...selectedExcelDataList, ...result]);
+    setSelectedExcelData(result[result.length - 1]);
+    uploadingRef.current = false;
     return false;
   };
 
@@ -260,14 +292,50 @@ const HomePage: FC = () => {
                           children: (
                             <div className="h-full overflow-y-auto">
                               <Table
+                                rowKey="id"
                                 dataSource={sheet.data}
-                                columns={sheet.columns.map((column) => {
-                                  return {
-                                    title: column.label,
-                                    dataIndex: column.key,
-                                    key: column.key,
-                                  };
-                                })}
+                                columns={[
+                                  {
+                                    title: "序号",
+                                    dataIndex: "rank",
+                                    width: 40,
+                                    render: (_1, _2, index) => {
+                                      return <div>{index + 1}</div>;
+                                    },
+                                  },
+                                  ...sheet.columns.map((column) => {
+                                    return {
+                                      title: column.label,
+                                      dataIndex: column.key,
+                                      key: column.key,
+                                      render: (
+                                        _: any,
+                                        item: Record<string, any>
+                                      ) => {
+                                        if (
+                                          (column.label.startsWith("日") &&
+                                            column.label.endsWith("期")) ||
+                                          column.label.includes("日期")
+                                        ) {
+                                          let v = item[column.key];
+                                          if (typeof v === "number") {
+                                            v = DateUtils.formatDateMonth(
+                                              excelSerialToDate(v)
+                                            );
+                                          } else if (v) {
+                                            v = DateUtils.formatDateMonth(v);
+                                          }
+                                          return <div>{v}</div>;
+                                        }
+                                        let v = item[column.key];
+                                        if (typeof v === "number") {
+                                          v = round(v, 2);
+                                        }
+                                        return <div>{v}</div>;
+                                      },
+                                    };
+                                  }),
+                                ]}
                                 pagination={false}
                               />
                             </div>
