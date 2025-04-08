@@ -313,9 +313,8 @@ const HomePage: FC = () => {
                                         item: Record<string, any>
                                       ) => {
                                         if (
-                                          (column.label.startsWith("日") &&
-                                            column.label.endsWith("期")) ||
-                                          column.label.includes("日期")
+                                          column.label.includes("日") &&
+                                          column.label.includes("期")
                                         ) {
                                           let v = item[column.key];
                                           if (typeof v === "number") {
