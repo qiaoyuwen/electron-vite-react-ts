@@ -59,11 +59,12 @@ export const Sider: FC<
       />
       <Tooltip title={collapse ? "展开" : "收起"}>
         <Button
-          className="sider-collapse-btn absolute flex items-center justify-center px-2 rounded bottom-8 -right-14 z-50"
+          className="sider-collapse-btn absolute flex items-center justify-center px-2 rounded bottom-8 z-50"
           type="text"
           style={{
             backgroundColor: "#fff",
             boxShadow: "rgba(0, 0, 0, 0.15) 0px 4px 8px 0px",
+            right: collapse ? "-3rem" : "1rem",
           }}
           onClick={() => setCollapse((old) => !old)}
         >

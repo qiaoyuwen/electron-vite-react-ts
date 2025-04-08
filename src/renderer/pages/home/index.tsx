@@ -1,13 +1,29 @@
 import { Sider, SiderContext } from "@/components/sider";
-import { App, Button, Divider, Empty, Upload } from "antd";
-import { FC, useState } from "react";
+import {
+  App,
+  Button,
+  Divider,
+  Dropdown,
+  Empty,
+  Table,
+  Tabs,
+  theme,
+  Upload,
+} from "antd";
+import { FC, useEffect, useState } from "react";
 import { UploadOutlined } from "@ant-design/icons";
 import { RcFile } from "antd/es/upload";
 import * as XLSX from "xlsx";
+import { uid } from "@/utils/uid";
+import { useConfirm } from "@/hooks/confirm";
+import MoreIcon from "@/assets/more.png";
+import { unionBy } from "lodash";
 
 interface ExcelData {
+  id: string;
   name: string;
   sheets: {
+    id: string;
     name: string;
     columns: { key: string; label: string }[];
     data: Record<string, any>[];
@@ -15,12 +31,26 @@ interface ExcelData {
 }
 
 const HomePage: FC = () => {
+  const { token } = theme.useToken();
   const { message } = App.useApp();
+  const { confirm } = useConfirm();
   const [collapse, setCollapse] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
   const [width, setWidth] = useState(300);
   const [excelDataList, setExcelDataList] = useState<ExcelData[]>([]);
-  const [selectedExcelData, setSelectedExcelData] = useState<ExcelData[]>([]);
+  const [selectedExcelDataList, setSelectedExcelDataList] = useState<
+    ExcelData[]
+  >([]);
+  const [selectedExcelData, setSelectedExcelData] = useState<ExcelData>();
+  const [selectedSheetId, setSelectedSheetId] = useState<string>();
+  const [hoverId, setHoverId] = useState<string>();
+  const [moreMenuOpenedId, setMoreMenuOpenedId] = useState<string>();
+
+  useEffect(() => {
+    if (selectedExcelData) {
+      setSelectedSheetId(selectedExcelData.sheets[0]?.id);
+    }
+  }, [selectedExcelData]);
 
   const resolveExcels = async (file: RcFile) => {
     const reader = new FileReader();
@@ -29,6 +59,7 @@ const HomePage: FC = () => {
         const data = new Uint8Array(e.target.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: "array" });
         const excelData: ExcelData = {
+          id: uid(),
           name: file.name,
           sheets: [],
         };
@@ -39,6 +70,7 @@ const HomePage: FC = () => {
           if (jsonData.length > 0) {
             const firstRow = jsonData.shift();
             excelData.sheets.push({
+              id: uid(),
               name: Object.keys(firstRow)[0],
               columns: Object.keys(firstRow).map((key) => {
                 return {
@@ -52,6 +84,8 @@ const HomePage: FC = () => {
         }
         const newExcelDataList = [...excelDataList, excelData];
         setExcelDataList(newExcelDataList);
+        setSelectedExcelDataList([...selectedExcelDataList, excelData]);
+        setSelectedExcelData(excelData);
       } catch {
         message.error(
           `Excel文件(${file.name})读取失败，请确认选择文件是否正确`
@@ -71,7 +105,7 @@ const HomePage: FC = () => {
           width={width}
           onWidthChange={setWidth}
         >
-          <div className="h-full flex flex-col">
+          <div className="h-full flex flex-col overflow-hidden">
             <div className="flex justify-center p-4 items-center">
               <Upload fileList={[]} multiple beforeUpload={resolveExcels}>
                 <Button icon={<UploadOutlined />}>选择Excel文件</Button>
@@ -85,15 +119,186 @@ const HomePage: FC = () => {
                   description="暂无文件，请添加Excel文件"
                 />
               )}
+              {excelDataList.length > 0 && (
+                <>
+                  {excelDataList.map((item) => {
+                    return (
+                      <div
+                        key={item.id}
+                        className="hover-bg-color flex items-center px-4 h-12 cursor-pointer"
+                        style={{
+                          backgroundColor:
+                            selectedExcelData?.id === item.id
+                              ? "#fff"
+                              : undefined,
+                          fontWeight:
+                            selectedExcelData?.id === item.id ? 600 : 400,
+                        }}
+                        onClick={() => {
+                          if (item.id === selectedExcelData?.id) {
+                            return;
+                          }
+                          setSelectedExcelDataList(
+                            unionBy(selectedExcelDataList, [item], "id")
+                          );
+                          setSelectedExcelData(item);
+                        }}
+                        onMouseEnter={() => setHoverId(item.id)}
+                        onMouseLeave={() => {
+                          if (moreMenuOpenedId !== item.id) {
+                            setHoverId(undefined);
+                          }
+                        }}
+                      >
+                        <div
+                          className="text-color truncate"
+                          style={{
+                            color:
+                              selectedExcelData?.id === item.id
+                                ? token.colorPrimary
+                                : undefined,
+                          }}
+                        >
+                          {item.name}
+                        </div>
+                        {(item.id === hoverId ||
+                          item.id === moreMenuOpenedId) && (
+                          <Dropdown
+                            overlayClassName="custom-context-menu"
+                            menu={{
+                              items: [
+                                {
+                                  key: "remove",
+                                  label: "删除",
+                                  danger: true,
+                                },
+                              ],
+                              onClick: ({ key }) => {
+                                setMoreMenuOpenedId(undefined);
+                                if (key === "remove") {
+                                  confirm({
+                                    title: "删除",
+                                    message: "是否确认删除该Excel文件？",
+                                    onOk: async () => {
+                                      setExcelDataList(
+                                        excelDataList.filter(
+                                          (innerItem) =>
+                                            innerItem.id !== item.id
+                                        )
+                                      );
+                                      const newSelectedExcelDataList =
+                                        selectedExcelDataList.filter(
+                                          (innerItem) =>
+                                            innerItem.id !== item.id
+                                        );
+                                      setSelectedExcelDataList(
+                                        newSelectedExcelDataList
+                                      );
+                                      if (selectedExcelData.id === item.id) {
+                                        setSelectedExcelData(
+                                          newSelectedExcelDataList[
+                                            newSelectedExcelDataList.length - 1
+                                          ]
+                                        );
+                                      }
+                                      message.success("操作成功");
+                                    },
+                                  });
+                                }
+                              },
+                            }}
+                            trigger={["click"]}
+                            onOpenChange={(open) => {
+                              setMoreMenuOpenedId(open ? item.id : undefined);
+                              if (!open) {
+                                setHoverId(undefined);
+                              }
+                            }}
+                          >
+                            <img
+                              className="w-6 h-6 ml-auto"
+                              src={MoreIcon}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </Dropdown>
+                        )}
+                      </div>
+                    );
+                  })}
+                </>
+              )}
             </div>
           </div>
         </Sider>
       </SiderContext.Provider>
       <div className="flex-1 min-w-0 flex flex-col">
-        {selectedExcelData.length === 0 && (
+        {selectedExcelDataList.length === 0 && (
           <div className="w-full h-full flex items-center justify-center">
             <Empty description="请选择需要查看的Excel文件" />
           </div>
+        )}
+        {selectedExcelDataList.length > 0 && (
+          <Tabs
+            className="h-full"
+            activeKey={selectedExcelData.id}
+            type="editable-card"
+            hideAdd
+            items={selectedExcelDataList.map((item) => {
+              return {
+                key: item.id,
+                label: item.name,
+                children: (
+                  <div className="h-full px-4">
+                    <Tabs
+                      className="h-full"
+                      activeKey={selectedSheetId}
+                      onChange={(v) => setSelectedSheetId(v)}
+                      items={item.sheets.map((sheet) => {
+                        return {
+                          key: sheet.id,
+                          label: sheet.name,
+                          children: (
+                            <div className="h-full overflow-y-auto">
+                              <Table
+                                dataSource={sheet.data}
+                                columns={sheet.columns.map((column) => {
+                                  return {
+                                    title: column.label,
+                                    dataIndex: column.key,
+                                    key: column.key,
+                                  };
+                                })}
+                                pagination={false}
+                              />
+                            </div>
+                          ),
+                        };
+                      })}
+                    />
+                  </div>
+                ),
+              };
+            })}
+            onChange={(v) => {
+              const newSelected = excelDataList.find((item) => item.id === v);
+              setSelectedExcelData(newSelected);
+            }}
+            onEdit={(v, action) => {
+              if (action === "remove") {
+                const newSelectedExcelDataList = selectedExcelDataList.filter(
+                  (innerItem) => innerItem.id !== v
+                );
+                setSelectedExcelDataList(newSelectedExcelDataList);
+                if (selectedExcelData.id === v) {
+                  setSelectedExcelData(
+                    newSelectedExcelDataList[
+                      newSelectedExcelDataList.length - 1
+                    ]
+                  );
+                }
+              }
+            }}
+          />
         )}
       </div>
     </div>
