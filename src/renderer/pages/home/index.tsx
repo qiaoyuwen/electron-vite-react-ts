@@ -89,6 +89,113 @@ const HomePage: FC = () => {
     });
   };
 
+  const resolveData = async () => {
+    await form.validateFields();
+    const value = form.getFieldsValue();
+    const result: {
+      name: string;
+      dataList: StatisticData[];
+    }[] = [];
+    for (const col of value.cols) {
+      const dataList = await Promise.all(
+        col.files.map((file) => {
+          return resolveFile(file);
+        })
+      );
+      Array.from({ length: 12 }, (_, i) => i + 1).forEach((month) => {
+        const find = dataList.find((item) => item.month === month);
+        if (!find) {
+          dataList.push({
+            month,
+            count: 0,
+          });
+        }
+      });
+      const quarterList: StatisticData[][] = [[], [], [], []];
+      dataList
+        .sort((item1, item2) => item1.month - item2.month)
+        .forEach((dataItem) => {
+          if (dataItem.month <= 3) {
+            quarterList[0].push(dataItem);
+          }
+          if (dataItem.month >= 4 && dataItem.month <= 6) {
+            quarterList[1].push(dataItem);
+          }
+          if (dataItem.month >= 7 && dataItem.month <= 9) {
+            quarterList[2].push(dataItem);
+          }
+          if (dataItem.month >= 10) {
+            quarterList[3].push(dataItem);
+          }
+        });
+      quarterList.forEach((quarter, index) => {
+        let name = "";
+        if (index === 0) {
+          name = "第一季度";
+        }
+        if (index === 1) {
+          name = "第二季度";
+        }
+        if (index === 2) {
+          name = "第三季度";
+        }
+        if (index === 3) {
+          name = "第四季度";
+        }
+        quarter.push({
+          quarter: name,
+          count: quarter.reduce((pre, cur) => {
+            return pre + cur.count;
+          }, 0),
+        });
+      });
+      quarterList[3].push({
+        quarter: "合计",
+        count: flatten(quarterList).reduce((pre, cur) => {
+          return pre + cur.count;
+        }, 0),
+      });
+      result.push({
+        name: col.name,
+        dataList: flatten(quarterList),
+      });
+    }
+    setColumns([
+      {
+        title: "月份",
+        dataIndex: "month",
+        key: "month",
+      },
+      ...result.map((item) => {
+        return {
+          title: item.name,
+          dataIndex: item.name,
+          key: item.name,
+        };
+      }),
+    ]);
+    const data: {
+      [key: string]: string | number;
+      month?: string;
+    }[] = [];
+    if (result.length > 0) {
+      result[0].dataList.forEach((_, index) => {
+        const newItem: {
+          [key: string]: string | number;
+          month?: string;
+        } = {};
+        result.forEach((item) => {
+          newItem.month = item.dataList[index].quarter
+            ? item.dataList[index].quarter
+            : `${item.dataList[index].month}月份`;
+          newItem[item.name] = item.dataList[index].count;
+        });
+        data.push(newItem);
+      });
+    }
+    setPreviewData(data);
+  };
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center p-4 custom-border-b">
@@ -103,114 +210,7 @@ const HomePage: FC = () => {
               setColumns([]);
               setPreviewData([]);
               try {
-                await form.validateFields();
-                const value = form.getFieldsValue();
-                const result: {
-                  name: string;
-                  dataList: StatisticData[];
-                }[] = [];
-                for (const col of value.cols) {
-                  const dataList = await Promise.all(
-                    col.files.map((file) => {
-                      return resolveFile(file);
-                    })
-                  );
-                  Array.from({ length: 12 }, (_, i) => i + 1).forEach(
-                    (month) => {
-                      const find = dataList.find(
-                        (item) => item.month === month
-                      );
-                      if (!find) {
-                        dataList.push({
-                          month,
-                          count: 0,
-                        });
-                      }
-                    }
-                  );
-                  const quarterList: StatisticData[][] = [[], [], [], []];
-                  dataList
-                    .sort((item1, item2) => item1.month - item2.month)
-                    .forEach((dataItem) => {
-                      if (dataItem.month <= 3) {
-                        quarterList[0].push(dataItem);
-                      }
-                      if (dataItem.month >= 4 && dataItem.month <= 6) {
-                        quarterList[1].push(dataItem);
-                      }
-                      if (dataItem.month >= 7 && dataItem.month <= 9) {
-                        quarterList[2].push(dataItem);
-                      }
-                      if (dataItem.month >= 10) {
-                        quarterList[3].push(dataItem);
-                      }
-                    });
-                  quarterList.forEach((quarter, index) => {
-                    let name = "";
-                    if (index === 0) {
-                      name = "第一季度";
-                    }
-                    if (index === 1) {
-                      name = "第二季度";
-                    }
-                    if (index === 2) {
-                      name = "第三季度";
-                    }
-                    if (index === 3) {
-                      name = "第四季度";
-                    }
-                    quarter.push({
-                      quarter: name,
-                      count: quarter.reduce((pre, cur) => {
-                        return pre + cur.count;
-                      }, 0),
-                    });
-                  });
-                  quarterList[3].push({
-                    quarter: "合计",
-                    count: flatten(quarterList).reduce((pre, cur) => {
-                      return pre + cur.count;
-                    }, 0),
-                  });
-                  result.push({
-                    name: col.name,
-                    dataList: flatten(quarterList),
-                  });
-                }
-                setColumns([
-                  {
-                    title: "月份",
-                    dataIndex: "month",
-                    key: "month",
-                  },
-                  ...result.map((item) => {
-                    return {
-                      title: item.name,
-                      dataIndex: item.name,
-                      key: item.name,
-                    };
-                  }),
-                ]);
-                const data: {
-                  [key: string]: string | number;
-                  month?: string;
-                }[] = [];
-                if (result.length > 0) {
-                  result[0].dataList.forEach((_, index) => {
-                    const newItem: {
-                      [key: string]: string | number;
-                      month?: string;
-                    } = {};
-                    result.forEach((item) => {
-                      newItem.month = item.dataList[index].quarter
-                        ? item.dataList[index].quarter
-                        : `${item.dataList[index].month}月份`;
-                      newItem[item.name] = item.dataList[index].count;
-                    });
-                    data.push(newItem);
-                  });
-                }
-                setPreviewData(data);
+                await resolveData();
                 setDialogOpen(true);
               } catch (e) {
                 console.log("e", e);
@@ -226,11 +226,56 @@ const HomePage: FC = () => {
           <Button
             type="primary"
             onClick={async () => {
+              setColumns([]);
+              setPreviewData([]);
               try {
                 await form.validateFields();
+                await resolveData();
+                try {
+                  // 1. 准备数据
+                  const worksheetData = [];
+
+                  // 添加表头行
+                  const headerRow = columns.map((col) => col.title);
+                  worksheetData.push(headerRow);
+
+                  // 添加数据行
+                  previewData.forEach((item) => {
+                    const row = columns.map((col) => item[col.dataIndex] ?? "");
+                    worksheetData.push(row);
+                  });
+
+                  // 2. 创建工作表
+                  const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+
+                  // 设置列宽
+                  worksheet["!cols"] = columns.map(() => ({ wch: 15 }));
+
+                  // 3. 创建工作簿并添加工作表
+                  const workbook = XLSX.utils.book_new();
+                  XLSX.utils.book_append_sheet(
+                    workbook,
+                    worksheet,
+                    "内镜中心工作量统计表"
+                  );
+
+                  // 4. 生成Excel文件并下载
+                  XLSX.writeFile(workbook, `统计结果.xlsx`);
+
+                  message.success("导出成功");
+                } catch (error) {
+                  message.error(
+                    `导出失败: ${
+                      error instanceof Error ? error.message : "未知错误"
+                    }`
+                  );
+                }
               } catch (e) {
-                const name = e.errorFields[0]?.name;
-                form.scrollToField(name);
+                console.log("e", e);
+                if (e.errorFields[0]?.name) {
+                  const name = e.errorFields[0]?.name;
+                  form.scrollToField(name);
+                }
               }
             }}
           >
