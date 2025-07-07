@@ -1,373 +1,479 @@
-import { Sider, SiderContext } from "@/components/sider";
 import {
+  Alert,
   App,
   Button,
-  Divider,
-  Dropdown,
-  Empty,
+  Card,
+  Form,
+  Input,
+  Modal,
   Table,
-  Tabs,
-  theme,
+  Tooltip,
   Upload,
 } from "antd";
-import { FC, useEffect, useRef, useState } from "react";
-import { UploadOutlined } from "@ant-design/icons";
+import { FC, useRef, useState } from "react";
+import { DeleteOutlined, UploadOutlined } from "@ant-design/icons";
 import { RcFile } from "antd/es/upload";
 import * as XLSX from "xlsx";
-import { uid } from "@/utils/uid";
-import { useConfirm } from "@/hooks/confirm";
-import MoreIcon from "@/assets/more.png";
-import { round, unionBy } from "lodash";
-import { DateUtils } from "@/utils/date";
+import { flatten } from "lodash";
+import "./index.scss";
 
-interface ExcelData {
-  id: string;
-  name: string;
-  sheets: {
-    id: string;
-    name: string;
-    columns: { key: string; label: string }[];
-    data: Record<string, any>[];
-  }[];
+interface StatisticData {
+  quarter?: string;
+  month?: number;
+  count: number;
 }
 
-const EXCEL_EPOCH = new Date(1899, 11, 31);
-
-const excelSerialToDate = (serial: number) => {
-  const utcDays = Math.floor(serial - 1); // Excel 从 1 开始计数
-  const msPerDay = 86400000; // 一天的毫秒数
-  const date = new Date(EXCEL_EPOCH.getTime() + utcDays * msPerDay);
-
-  // 修正 Excel 的闰年错误（1900 年不是闰年，但 Excel 认为它是）
-  if (serial >= 60) date.setUTCDate(date.getUTCDate() - 1);
-
-  return date;
-};
-
 const HomePage: FC = () => {
-  const { token } = theme.useToken();
   const { message } = App.useApp();
-  const { confirm } = useConfirm();
-  const [collapse, setCollapse] = useState(false);
-  const [isMoving, setIsMoving] = useState(false);
-  const [width, setWidth] = useState(300);
-  const [excelDataList, setExcelDataList] = useState<ExcelData[]>([]);
-  const [selectedExcelDataList, setSelectedExcelDataList] = useState<
-    ExcelData[]
+  const [form] = Form.useForm<{
+    cols: {
+      name: string;
+      files: RcFile[];
+    }[];
+  }>();
+  const ref = useRef<HTMLDivElement>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [columns, setColumns] = useState<
+    {
+      title: string;
+      dataIndex: string;
+      key: string;
+    }[]
   >([]);
-  const [selectedExcelData, setSelectedExcelData] = useState<ExcelData>();
-  const [selectedSheetId, setSelectedSheetId] = useState<string>();
-  const [hoverId, setHoverId] = useState<string>();
-  const [moreMenuOpenedId, setMoreMenuOpenedId] = useState<string>();
-  const uploadingRef = useRef(false);
+  const [previewData, setPreviewData] = useState<
+    {
+      [key: string]: string | number;
+      month?: string;
+    }[]
+  >([]);
 
-  useEffect(() => {
-    if (selectedExcelData) {
-      setSelectedSheetId(selectedExcelData.sheets[0]?.id);
-    }
-  }, [selectedExcelData]);
+  const parseMonthFromString = (input: string): number | null => {
+    // 正则解释：从字符串开头匹配1-12的数字（允许前导零），后跟"月"字
+    const match = input.match(/^(0?[1-9]|1[0-2])月/);
+    return match ? parseInt(match[1], 10) : null;
+  };
 
   const resolveFile = async (file: RcFile) => {
-    return new Promise<ExcelData>((resolve) => {
+    return new Promise<StatisticData>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         try {
           const data = new Uint8Array(e.target.result as ArrayBuffer);
           const workbook = XLSX.read(data, { type: "array" });
-          const excelData: ExcelData = {
-            id: uid(),
-            name: file.name,
-            sheets: [],
-          };
+          const month = parseMonthFromString(file.name);
+          let count = 0;
           for (const sheetName of workbook.SheetNames) {
             const sheet = workbook.Sheets[sheetName];
             const jsonData: Record<string, any>[] =
               XLSX.utils.sheet_to_json(sheet);
-            if (jsonData.length > 0) {
-              const firstRow = jsonData.shift();
-              excelData.sheets.push({
-                id: uid(),
-                name: Object.keys(firstRow)[0],
-                columns: Object.keys(firstRow).map((key) => {
-                  return {
-                    key,
-                    label: firstRow[key] as string,
-                  };
-                }),
-                data: jsonData,
-              });
-            }
+            count += jsonData.length;
           }
-          resolve(excelData);
+          if (month) {
+            resolve({
+              month,
+              count,
+            });
+          } else {
+            message.error(
+              `Excel文件(${file.name})的名称格式不符合要求，请修改后从新上传`
+            );
+          }
         } catch {
           message.error(
             `Excel文件(${file.name})读取失败，请确认选择文件是否正确`
           );
+          reject();
         }
       };
       reader.readAsArrayBuffer(file);
     });
   };
 
-  const resolveExcels = async (_: RcFile, files: RcFile[]) => {
-    if (uploadingRef.current) {
-      return;
-    }
-    uploadingRef.current = true;
-    const result = await Promise.all(
-      files.map((item) => {
-        return resolveFile(item);
-      })
-    );
-
-    const newExcelDataList = [...excelDataList, ...result];
-    setExcelDataList(newExcelDataList);
-    setSelectedExcelDataList([...selectedExcelDataList, ...result]);
-    setSelectedExcelData(result[result.length - 1]);
-    uploadingRef.current = false;
-    return false;
-  };
-
   return (
-    <div className="h-full flex">
-      <SiderContext.Provider value={{ collapse, setCollapse }}>
-        <Sider
-          isMoving={isMoving}
-          onMovingChange={setIsMoving}
-          width={width}
-          onWidthChange={setWidth}
-        >
-          <div className="h-full flex flex-col overflow-hidden">
-            <div className="flex justify-center p-4 items-center">
-              <Upload fileList={[]} multiple beforeUpload={resolveExcels}>
-                <Button icon={<UploadOutlined />}>选择Excel文件</Button>
-              </Upload>
-            </div>
-            <Divider className="my-0" />
-            <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
-              {excelDataList.length === 0 && (
-                <Empty
-                  className="mt-8"
-                  description="暂无文件，请添加Excel文件"
-                />
-              )}
-              {excelDataList.length > 0 && (
-                <>
-                  {excelDataList.map((item) => {
-                    return (
-                      <div
-                        key={item.id}
-                        className="hover-bg-color flex items-center px-4 h-12 cursor-pointer"
-                        style={{
-                          backgroundColor:
-                            selectedExcelData?.id === item.id
-                              ? "#fff"
-                              : undefined,
-                          fontWeight:
-                            selectedExcelData?.id === item.id ? 600 : 400,
-                        }}
-                        onClick={() => {
-                          if (item.id === selectedExcelData?.id) {
-                            return;
-                          }
-                          setSelectedExcelDataList(
-                            unionBy(selectedExcelDataList, [item], "id")
-                          );
-                          setSelectedExcelData(item);
-                        }}
-                        onMouseEnter={() => setHoverId(item.id)}
-                        onMouseLeave={() => {
-                          if (moreMenuOpenedId !== item.id) {
-                            setHoverId(undefined);
-                          }
-                        }}
-                      >
-                        <div
-                          className="text-color truncate"
-                          style={{
-                            color:
-                              selectedExcelData?.id === item.id
-                                ? token.colorPrimary
-                                : undefined,
-                          }}
-                        >
-                          {item.name}
-                        </div>
-                        {(item.id === hoverId ||
-                          item.id === moreMenuOpenedId) && (
-                          <Dropdown
-                            overlayClassName="custom-context-menu"
-                            menu={{
-                              items: [
-                                {
-                                  key: "remove",
-                                  label: "删除",
-                                  danger: true,
-                                },
-                              ],
-                              onClick: ({ key }) => {
-                                setMoreMenuOpenedId(undefined);
-                                if (key === "remove") {
-                                  confirm({
-                                    title: "删除",
-                                    message: "是否确认删除该Excel文件？",
-                                    onOk: async () => {
-                                      setExcelDataList(
-                                        excelDataList.filter(
-                                          (innerItem) =>
-                                            innerItem.id !== item.id
-                                        )
-                                      );
-                                      const newSelectedExcelDataList =
-                                        selectedExcelDataList.filter(
-                                          (innerItem) =>
-                                            innerItem.id !== item.id
-                                        );
-                                      setSelectedExcelDataList(
-                                        newSelectedExcelDataList
-                                      );
-                                      if (selectedExcelData.id === item.id) {
-                                        setSelectedExcelData(
-                                          newSelectedExcelDataList[
-                                            newSelectedExcelDataList.length - 1
-                                          ]
-                                        );
-                                      }
-                                      message.success("操作成功");
-                                    },
-                                  });
-                                }
-                              },
-                            }}
-                            trigger={["click"]}
-                            onOpenChange={(open) => {
-                              setMoreMenuOpenedId(open ? item.id : undefined);
-                              if (!open) {
-                                setHoverId(undefined);
-                              }
-                            }}
-                          >
-                            <img
-                              className="w-6 h-6 ml-auto"
-                              src={MoreIcon}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          </Dropdown>
-                        )}
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-            </div>
-          </div>
-        </Sider>
-      </SiderContext.Provider>
-      <div className="flex-1 min-w-0 flex flex-col">
-        {selectedExcelDataList.length === 0 && (
-          <div className="w-full h-full flex items-center justify-center">
-            <Empty description="请选择需要查看的Excel文件" />
-          </div>
-        )}
-        {selectedExcelDataList.length > 0 && (
-          <Tabs
-            className="h-full"
-            activeKey={selectedExcelData.id}
-            type="editable-card"
-            hideAdd
-            items={selectedExcelDataList.map((item) => {
-              return {
-                key: item.id,
-                label: item.name,
-                children: (
-                  <div className="h-full px-4">
-                    <Tabs
-                      className="h-full"
-                      activeKey={selectedSheetId}
-                      onChange={(v) => setSelectedSheetId(v)}
-                      items={item.sheets.map((sheet) => {
-                        return {
-                          key: sheet.id,
-                          label: sheet.name,
-                          children: (
-                            <div className="h-full overflow-y-auto">
-                              <Table
-                                rowKey="id"
-                                dataSource={sheet.data}
-                                columns={[
-                                  {
-                                    title: "序号",
-                                    dataIndex: "rank",
-                                    width: 40,
-                                    render: (_1, _2, index) => {
-                                      return <div>{index + 1}</div>;
-                                    },
-                                  },
-                                  ...sheet.columns.map((column) => {
-                                    return {
-                                      title: column.label,
-                                      dataIndex: column.key,
-                                      key: column.key,
-                                      render: (
-                                        _: any,
-                                        item: Record<string, any>
-                                      ) => {
-                                        if (
-                                          column.label.includes("日") &&
-                                          column.label.includes("期")
-                                        ) {
-                                          let v = item[column.key];
-                                          if (typeof v === "number") {
-                                            v = DateUtils.formatDateMonth(
-                                              excelSerialToDate(v)
-                                            );
-                                          } else if (v) {
-                                            v = DateUtils.formatDateMonth(v);
-                                          }
-                                          return <div>{v}</div>;
-                                        }
-                                        let v = item[column.key];
-                                        if (typeof v === "number") {
-                                          v = round(v, 2);
-                                        }
-                                        return <div>{v}</div>;
-                                      },
-                                    };
-                                  }),
-                                ]}
-                                pagination={false}
-                              />
-                            </div>
-                          ),
-                        };
-                      })}
-                    />
-                  </div>
-                ),
-              };
-            })}
-            onChange={(v) => {
-              const newSelected = excelDataList.find((item) => item.id === v);
-              setSelectedExcelData(newSelected);
-            }}
-            onEdit={(v, action) => {
-              if (action === "remove") {
-                const newSelectedExcelDataList = selectedExcelDataList.filter(
-                  (innerItem) => innerItem.id !== v
-                );
-                setSelectedExcelDataList(newSelectedExcelDataList);
-                if (selectedExcelData.id === v) {
-                  setSelectedExcelData(
-                    newSelectedExcelDataList[
-                      newSelectedExcelDataList.length - 1
-                    ]
+    <div className="h-full flex flex-col">
+      <div className="flex items-center p-4 custom-border-b">
+        <Alert
+          message="提示：统计的excel文件需以 x月为开头, x为数字月份1-12"
+          type="info"
+        />
+        <div className="flex items-center ml-auto">
+          <Button
+            className="mr-4"
+            onClick={async () => {
+              setColumns([]);
+              setPreviewData([]);
+              try {
+                await form.validateFields();
+                const value = form.getFieldsValue();
+                const result: {
+                  name: string;
+                  dataList: StatisticData[];
+                }[] = [];
+                for (const col of value.cols) {
+                  const dataList = await Promise.all(
+                    col.files.map((file) => {
+                      return resolveFile(file);
+                    })
                   );
+                  Array.from({ length: 12 }, (_, i) => i + 1).forEach(
+                    (month) => {
+                      const find = dataList.find(
+                        (item) => item.month === month
+                      );
+                      if (!find) {
+                        dataList.push({
+                          month,
+                          count: 0,
+                        });
+                      }
+                    }
+                  );
+                  const quarterList: StatisticData[][] = [[], [], [], []];
+                  dataList
+                    .sort((item1, item2) => item1.month - item2.month)
+                    .forEach((dataItem) => {
+                      if (dataItem.month <= 3) {
+                        quarterList[0].push(dataItem);
+                      }
+                      if (dataItem.month >= 4 && dataItem.month <= 6) {
+                        quarterList[1].push(dataItem);
+                      }
+                      if (dataItem.month >= 7 && dataItem.month <= 9) {
+                        quarterList[2].push(dataItem);
+                      }
+                      if (dataItem.month >= 10) {
+                        quarterList[3].push(dataItem);
+                      }
+                    });
+                  quarterList.forEach((quarter, index) => {
+                    let name = "";
+                    if (index === 0) {
+                      name = "第一季度";
+                    }
+                    if (index === 1) {
+                      name = "第二季度";
+                    }
+                    if (index === 2) {
+                      name = "第三季度";
+                    }
+                    if (index === 3) {
+                      name = "第四季度";
+                    }
+                    quarter.push({
+                      quarter: name,
+                      count: quarter.reduce((pre, cur) => {
+                        return pre + cur.count;
+                      }, 0),
+                    });
+                  });
+                  quarterList[3].push({
+                    quarter: "合计",
+                    count: flatten(quarterList).reduce((pre, cur) => {
+                      return pre + cur.count;
+                    }, 0),
+                  });
+                  result.push({
+                    name: col.name,
+                    dataList: flatten(quarterList),
+                  });
+                }
+                setColumns([
+                  {
+                    title: "月份",
+                    dataIndex: "month",
+                    key: "month",
+                  },
+                  ...result.map((item) => {
+                    return {
+                      title: item.name,
+                      dataIndex: item.name,
+                      key: item.name,
+                    };
+                  }),
+                ]);
+                const data: {
+                  [key: string]: string | number;
+                  month?: string;
+                }[] = [];
+                if (result.length > 0) {
+                  result[0].dataList.forEach((_, index) => {
+                    const newItem: {
+                      [key: string]: string | number;
+                      month?: string;
+                    } = {};
+                    result.forEach((item) => {
+                      newItem.month = item.dataList[index].quarter
+                        ? item.dataList[index].quarter
+                        : `${item.dataList[index].month}月份`;
+                      newItem[item.name] = item.dataList[index].count;
+                    });
+                    data.push(newItem);
+                  });
+                }
+                setPreviewData(data);
+                setDialogOpen(true);
+              } catch (e) {
+                console.log("e", e);
+                if (e?.errorFields?.[0]?.name) {
+                  const name = e.errorFields[0].name;
+                  form.scrollToField(name);
                 }
               }
             }}
-          />
-        )}
+          >
+            预览
+          </Button>
+          <Button
+            type="primary"
+            onClick={async () => {
+              try {
+                await form.validateFields();
+              } catch (e) {
+                const name = e.errorFields[0]?.name;
+                form.scrollToField(name);
+              }
+            }}
+          >
+            导出
+          </Button>
+        </div>
       </div>
+      <div className="flex-1 min-h-0 flex flex-col mt-4">
+        <Form
+          className="flex-1 min-h-0 flex flex-col"
+          form={form}
+          scrollToFirstError
+          initialValues={{
+            cols: [
+              {
+                name: "无痛胃镜",
+                files: [],
+              },
+              {
+                name: "胃镜",
+                files: [],
+              },
+              /*{
+                name: "无痛肠镜",
+                files: [],
+              },
+              {
+                name: "肠镜",
+                files: [],
+              },
+              {
+                name: "ERCP",
+                files: [],
+              },
+              {
+                name: "内痔套扎",
+                files: [],
+              },
+              {
+                name: "套扎",
+                files: [],
+              },
+              {
+                name: "硬化",
+                files: [],
+              },
+              {
+                name: "食管扩张",
+                files: [],
+              },
+              {
+                name: "胃息肉",
+                files: [],
+              },
+              {
+                name: "肠息肉",
+                files: [],
+              },
+              {
+                name: "超声",
+                files: [],
+              },
+              {
+                name: "胃结石",
+                files: [],
+              },
+              {
+                name: "置管/拔管",
+                files: [],
+              },
+              {
+                name: "异物",
+                files: [],
+              },
+              {
+                name: "ESD",
+                files: [],
+              },
+              {
+                name: "止血",
+                files: [],
+              },
+              {
+                name: "日间手术",
+                files: [],
+              },
+              {
+                name: "小肠镜",
+                files: [],
+              },
+              {
+                name: "肠镜未达盲肠",
+                files: [],
+              },
+              {
+                name: "POEM",
+                files: [],
+              }, */
+            ],
+          }}
+        >
+          <Form.List name="cols">
+            {(fields, { add, remove }) => {
+              return (
+                <div className="flex-1 min-h-0 flex flex-col">
+                  <div className="flex items-center px-4">
+                    <Button
+                      type="primary"
+                      onClick={() => {
+                        add({
+                          name: "",
+                          files: [],
+                        });
+                        if (ref.current) {
+                          setTimeout(() => {
+                            ref.current.scrollTop = 100000;
+                          });
+                        }
+                      }}
+                    >
+                      + 新增
+                    </Button>
+                    <Button
+                      className="ml-4"
+                      onClick={() => {
+                        form.resetFields();
+                      }}
+                    >
+                      重置
+                    </Button>
+                  </div>
+                  <div
+                    ref={ref}
+                    className="flex-1 min-h-0 flex flex-col overflow-y-auto mt-4 px-4"
+                  >
+                    {fields.map((field) => {
+                      return (
+                        <Card
+                          className="mb-4"
+                          key={field.key}
+                          title={
+                            <div className="flex items-center">
+                              <div>{`统计列${field.name + 1}`}</div>
+                              <Tooltip title="删除">
+                                <DeleteOutlined
+                                  className="ml-4 cursor-pointer"
+                                  onClick={() => {
+                                    remove(field.name);
+                                  }}
+                                />
+                              </Tooltip>
+                            </div>
+                          }
+                          size="small"
+                        >
+                          <Form.Item
+                            className="max-w-[20rem]"
+                            label="列名"
+                            name={[field.name, "name"]}
+                            required
+                            rules={[
+                              {
+                                required: true,
+                                message: "请输入列名",
+                              },
+                            ]}
+                          >
+                            <Input maxLength={50} showCount />
+                          </Form.Item>
+                          <Form.Item
+                            label="Excel文件"
+                            name={[field.name, "files"]}
+                            required
+                            rules={[
+                              {
+                                required: true,
+                                message: "请添加需要统计的Excel文件",
+                              },
+                            ]}
+                          >
+                            <CustomUpload />
+                          </Form.Item>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            }}
+          </Form.List>
+        </Form>
+      </div>
+      <Modal
+        title="预览"
+        width="100rem"
+        open={dialogOpen}
+        okButtonProps={{
+          style: {
+            display: "none",
+          },
+        }}
+        cancelText="关闭"
+        onCancel={() => {
+          setDialogOpen(false);
+        }}
+      >
+        <Table
+          dataSource={previewData}
+          columns={columns}
+          pagination={false}
+          scroll={{ y: 800 }}
+          rowClassName={(record) => {
+            if (record.month?.includes("季度")) {
+              return "quarter-row";
+            }
+            if (record.month?.includes("合计")) {
+              return "count-row";
+            }
+            return "";
+          }}
+        />
+      </Modal>
+    </div>
+  );
+};
+
+const CustomUpload: FC<{
+  id?: string;
+  value?: RcFile[];
+  onChange?: (value: RcFile[]) => void;
+}> = ({ id, value, onChange }) => {
+  return (
+    <div className="max-w-[30rem]" id={id}>
+      <Upload
+        fileList={value}
+        multiple
+        beforeUpload={(_, fileList) => {
+          onChange(fileList);
+          return false;
+        }}
+      >
+        <Button icon={<UploadOutlined />}>选择Excel文件</Button>
+      </Upload>
     </div>
   );
 };

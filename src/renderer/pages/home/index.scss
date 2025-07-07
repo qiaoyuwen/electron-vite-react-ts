@@ -1,0 +1,13 @@
+.ant-table {
+  .ant-table-thead > tr > th {
+    @apply bg-[#bae0ff];
+  }
+
+  .quarter-row {
+    @apply bg-[#fff1b8];
+  }
+
+  .count-row {
+    @apply bg-[#ffccc7];
+  }
+}

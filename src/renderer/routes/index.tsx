@@ -1,7 +1,7 @@
-import { Suspense, lazy, LazyExoticComponent, FC } from 'react';
-import {Navigate, RouteObject } from 'react-router-dom';
+import { Suspense, lazy, LazyExoticComponent, FC } from "react";
+import { Navigate, RouteObject } from "react-router-dom";
 
-const HomePage = lazy(() => import('../pages/home'));
+const HomePage = lazy(() => import("../pages/home/index"));
 
 const wrapSuspense = (PageComponent: LazyExoticComponent<FC>) => {
   return (
@@ -13,7 +13,7 @@ const wrapSuspense = (PageComponent: LazyExoticComponent<FC>) => {
 
 export const routes: RouteObject[] = [
   {
-    path: '/home',
+    path: "/home",
     element: wrapSuspense(HomePage),
   },
   {
