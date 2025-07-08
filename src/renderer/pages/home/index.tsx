@@ -66,7 +66,32 @@ const HomePage: FC = () => {
             const sheet = workbook.Sheets[sheetName];
             const jsonData: Record<string, any>[] =
               XLSX.utils.sheet_to_json(sheet);
-            count += jsonData.length;
+            let haveHeader = false;
+            let nameEntries: [string, any][] = [];
+            if (jsonData[0]) {
+              nameEntries = Object.entries(jsonData[0]).filter(
+                ([, value]) =>
+                  `${value}`.includes("姓") && `${value}`.includes("名")
+              );
+              if (nameEntries.length > 0) {
+                haveHeader = true;
+              }
+            }
+            if (haveHeader) {
+              const [, ...data] = jsonData;
+              data.forEach((item) => {
+                nameEntries.forEach(([key]) => {
+                  if (item[key]) {
+                    const v = parseInt(item[key]);
+                    if (isNaN(v)) {
+                      count += 1;
+                    }
+                  }
+                });
+              });
+            } else {
+              count += jsonData.length;
+            }
           }
           if (month) {
             resolve({
@@ -78,7 +103,8 @@ const HomePage: FC = () => {
               `Excel文件(${file.name})的名称格式不符合要求，请修改后从新上传`
             );
           }
-        } catch {
+        } catch (e) {
+          console.log("e", e);
           message.error(
             `Excel文件(${file.name})读取失败，请确认选择文件是否正确`
           );
