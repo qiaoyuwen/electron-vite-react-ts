@@ -298,7 +298,7 @@ const HomePage: FC = () => {
                 name: "胃镜",
                 files: [],
               },
-              /*{
+              {
                 name: "无痛肠镜",
                 files: [],
               },
@@ -373,7 +373,7 @@ const HomePage: FC = () => {
               {
                 name: "POEM",
                 files: [],
-              }, */
+              },
             ],
           }}
         >

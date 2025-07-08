@@ -8,6 +8,7 @@
     "start": "vite dev",
     "build": "vite build",
     "package": "npm run build && electron-builder --dir",
+    "package-mac": "npm run build && electron-builder --dir --mac --universal",
     "lint": "eslint --ext .ts,.tsx .",
     "postinstall": "electron-rebuild"
   },
