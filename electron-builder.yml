@@ -1,0 +1,35 @@
+appId: com.example.electron-vite-react-ts
+productName: statistics-tool
+copyright: Copyright © 2023 qiaoyuwen
+
+directories:
+  output: release/${version}
+  buildResources: build
+
+files:
+  - "dist/**/*"
+
+asar: false
+
+mac:
+  category: public.app-category.developer-tools
+  icon: build/icons/icon.icns
+  target: dmg
+
+win:
+  icon: build/icons/icon.ico
+  target: nsis
+
+linux:
+  icon: build/icons
+  category: Development
+  target: AppImage
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+
+publish:
+  provider: github
+  releaseType: release
