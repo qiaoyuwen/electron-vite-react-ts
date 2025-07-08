@@ -12,7 +12,7 @@ import {
 } from "antd";
 import { FC, useRef, useState } from "react";
 import { DeleteOutlined, UploadOutlined } from "@ant-design/icons";
-import { RcFile } from "antd/es/upload";
+import { RcFile, UploadFile } from "antd/es/upload";
 import * as XLSX from "xlsx";
 import { flatten } from "lodash";
 import "./index.scss";
@@ -28,7 +28,7 @@ const HomePage: FC = () => {
   const [form] = Form.useForm<{
     cols: {
       name: string;
-      files: RcFile[];
+      files: UploadFile[];
     }[];
   }>();
   const ref = useRef<HTMLDivElement>(null);
@@ -99,7 +99,7 @@ const HomePage: FC = () => {
     for (const col of value.cols) {
       const dataList = await Promise.all(
         col.files.map((file) => {
-          return resolveFile(file);
+          return resolveFile(file.originFileObj);
         })
       );
       Array.from({ length: 12 }, (_, i) => i + 1).forEach((month) => {
@@ -151,9 +151,11 @@ const HomePage: FC = () => {
       });
       quarterList[3].push({
         quarter: "合计",
-        count: flatten(quarterList).reduce((pre, cur) => {
-          return pre + cur.count;
-        }, 0),
+        count: flatten(quarterList)
+          .filter((item) => !item.quarter?.includes("季度"))
+          .reduce((pre, cur) => {
+            return pre + cur.count;
+          }, 0),
       });
       result.push({
         name: col.name,
@@ -294,7 +296,7 @@ const HomePage: FC = () => {
                 name: "无痛胃镜",
                 files: [],
               },
-              {
+              /*{
                 name: "胃镜",
                 files: [],
               },
@@ -373,7 +375,7 @@ const HomePage: FC = () => {
               {
                 name: "POEM",
                 files: [],
-              },
+              },*/
             ],
           }}
         >
@@ -504,17 +506,19 @@ const HomePage: FC = () => {
 
 const CustomUpload: FC<{
   id?: string;
-  value?: RcFile[];
-  onChange?: (value: RcFile[]) => void;
+  value?: UploadFile[];
+  onChange?: (value: UploadFile[]) => void;
 }> = ({ id, value, onChange }) => {
   return (
     <div className="max-w-[30rem]" id={id}>
       <Upload
         fileList={value}
         multiple
-        beforeUpload={(_, fileList) => {
-          onChange(fileList);
+        beforeUpload={() => {
           return false;
+        }}
+        onChange={(v) => {
+          onChange(v.fileList);
         }}
       >
         <Button icon={<UploadOutlined />}>选择Excel文件</Button>
