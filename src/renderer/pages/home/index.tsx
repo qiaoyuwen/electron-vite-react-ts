@@ -195,7 +195,7 @@ const HomePage: FC = () => {
         dataList: flatten(quarterList),
       });
     }
-    setColumns([
+    const columns = [
       {
         title: "月份",
         dataIndex: "month",
@@ -208,7 +208,8 @@ const HomePage: FC = () => {
           key: item.name,
         };
       }),
-    ]);
+    ];
+    setColumns(columns);
     const data: {
       [key: string]: string | number;
       month?: string;
@@ -229,6 +230,10 @@ const HomePage: FC = () => {
       });
     }
     setPreviewData(data);
+    return {
+      columns,
+      data,
+    };
   };
 
   return (
@@ -265,7 +270,7 @@ const HomePage: FC = () => {
               setPreviewData([]);
               try {
                 await form.validateFields();
-                await resolveData();
+                const { data, columns } = await resolveData();
                 try {
                   // 1. 准备数据
                   const worksheetData = [];
@@ -275,7 +280,7 @@ const HomePage: FC = () => {
                   worksheetData.push(headerRow);
 
                   // 添加数据行
-                  previewData.forEach((item) => {
+                  data.forEach((item) => {
                     const row = columns.map((col) => item[col.dataIndex] ?? "");
                     worksheetData.push(row);
                   });
@@ -299,6 +304,7 @@ const HomePage: FC = () => {
 
                   message.success("导出成功");
                 } catch (error) {
+                  console.log("e", error);
                   message.error(
                     `导出失败: ${
                       error instanceof Error ? error.message : "未知错误"
