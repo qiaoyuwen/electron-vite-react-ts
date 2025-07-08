@@ -70,15 +70,22 @@ const HomePage: FC = () => {
             let nameEntries: [string, any][] = [];
             if (jsonData[0]) {
               nameEntries = Object.entries(jsonData[0]).filter(
-                ([, value]) =>
-                  `${value}`.includes("姓") && `${value}`.includes("名")
+                ([key, value]) =>
+                  (`${key}`.includes("姓") && `${key}`.includes("名")) ||
+                  (`${value}`.includes("姓") && `${value}`.includes("名"))
               );
               if (nameEntries.length > 0) {
                 haveHeader = true;
               }
             }
             if (haveHeader) {
-              const [, ...data] = jsonData;
+              const check = Object.entries(jsonData[0]).filter(
+                ([key]) => `${key}`.includes("姓") && `${key}`.includes("名")
+              );
+              let data = jsonData;
+              if (!check.length) {
+                [, ...data] = jsonData;
+              }
               data.forEach((item) => {
                 nameEntries.forEach(([key]) => {
                   if (item[key]) {
